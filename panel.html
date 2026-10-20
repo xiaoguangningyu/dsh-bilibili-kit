@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>B 站字幕工具 · dsh-bilibili-kit</title>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --text: #1d2129;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --accent: #fb7299;
+    --accent-weak: #fff0f4;
+    --ok: #15803d;
+    --warn: #b45309;
+    --err: #b91c1c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d;
+      --card: #1f2229;
+      --text: #e8eaed;
+      --muted: #9aa0a6;
+      --line: #2f333b;
+      --accent: #fb7299;
+      --accent-weak: #3a2029;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --err: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 18px 16px 48px;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 17px; margin: 0 0 4px; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px; font-size: 12.5px;
+    background: var(--accent-weak); color: var(--accent); font-weight: 600;
+  }
+  .badge.muted { background: transparent; color: var(--muted); font-weight: 400; border: 1px solid var(--line); }
+  input[type=text] {
+    flex: 1; min-width: 180px;
+    padding: 9px 11px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+    font: inherit;
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent-weak); border-color: var(--accent); }
+  button {
+    font: inherit; padding: 8px 14px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled) { opacity: .9; color: #fff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #qrBox { display: none; margin-top: 12px; }
+  #qrBox.show { display: block; }
+  #qrImg { width: 190px; height: 190px; border-radius: 10px; background: #fff; padding: 8px; }
+  .hint { color: var(--muted); font-size: 12.5px; }
+  .status-ok { color: var(--ok); }
+  .status-warn { color: var(--warn); }
+  .status-err { color: var(--err); }
+  #result { display: none; }
+  #result.show { display: block; }
+  .title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .meta { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
+  .desc {
+    white-space: pre-wrap; word-break: break-word;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 9px;
+    padding: 10px; max-height: 220px; overflow: auto; font-size: 13px;
+  }
+  .subs { margin-top: 10px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .chip {
+    padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg); cursor: pointer; font-size: 12.5px;
+  }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .transcript {
+    white-space: pre-wrap; word-break: break-word;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 9px;
+    padding: 10px; max-height: 46vh; overflow: auto;
+    font-size: 13px; line-height: 1.75;
+  }
+  .pane { margin-top: 8px; }
+  .hidden { display: none; }
+  #msg { min-height: 18px; font-size: 12.5px; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>B 站字幕工具</h1>
+  <div class="sub">dsh-bilibili-kit · 登录态只保存在本机 <code>~/.dsh/bilibili-kit/</code></div>
+
+  <div class="card">
+    <div class="row">
+      <span id="loginBadge" class="badge muted">读取登录态…</span>
+      <span class="spacer"></span>
+      <button id="loginBtn" class="primary">扫码登录</button>
+      <button id="logoutBtn" class="hidden">退出登录</button>
+    </div>
+    <div id="qrBox">
+      <div class="row" style="margin-top:10px">
+        <img id="qrImg" alt="B 站登录二维码" />
+        <div>
+          <div id="qrState" class="hint">用手机 B 站 App 扫码并在手机上确认</div>
+          <div class="hint">登录后二维码自动消失，不需要刷新页面。</div>
+        </div>
+      </div>
+    </div>
+    <details id="manualBox">
+      <summary class="hint" style="cursor:pointer;margin-top:10px">扫码不成功？手动粘贴登录态（备用通道）</summary>
+      <div class="row" style="margin-top:8px">
+        <input id="manualInput" type="text" placeholder="粘贴 SESSDATA 值，或整行 cookie（自动识别）" />
+        <button id="manualBtn">校验并保存</button>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        两种都行：① DevTools「应用 → 存储 → Cookie → https://www.bilibili.com」里 SESSDATA 的 Value；
+        ② 或「网络」面板刷新页面、点任意 bilibili 请求、在「请求标头」里复制 <code>cookie:</code> 那一整行。
+        它等价于登录态，只存本机 <code>~/.dsh/bilibili-kit/</code>，不会上传。
+      </div>
+    </details>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input id="videoInput" type="text" placeholder="粘贴链接 / BV 号 / av 号，例如 https://www.bilibili.com/video/BV1xx411c7mD" />
+      <button id="queryBtn" class="primary">读取</button>
+    </div>
+    <div class="hint" style="margin-top:8px">复制的字幕可以直接贴回对话里，让 AI 基于它总结或复现。</div>
+  </div>
+
+  <div id="result" class="card">
+    <div class="title" id="videoTitle"></div>
+    <div class="meta" id="videoMeta"></div>
+    <div class="row" style="margin-bottom:8px">
+      <span class="hint">简介</span>
+      <span class="spacer"></span>
+      <button id="copyDescBtn">复制简介</button>
+    </div>
+    <div class="desc" id="videoDesc"></div>
+
+    <div class="subs">
+      <div class="row">
+        <span class="hint" id="subsLabel">字幕</span>
+        <span class="spacer"></span>
+        <button id="copySubBtn" class="hidden">复制字幕纯文本</button>
+        <button id="showSubBtn" class="hidden">查看字幕</button>
+      </div>
+      <div class="chips" id="langChips"></div>
+      <div id="transcript" class="transcript pane hidden"></div>
+    </div>
+  </div>
+
+  <script src="/bilibili-kit/api/vendor/qrcode.js"></script>
+  <script>
+  (() => {
+    const $ = (id) => document.getElementById(id);
+    const state = { loggedIn: false, pollTimer: null, qrKey: null, video: null, currentLang: null };
+    const api = (path) => `/bilibili-kit/api/${path}`;
+
+    function setMsg(text, kind) {
+      const el = $('msg');
+      el.textContent = text || '';
+      el.className = kind === 'err' ? 'status-err' : kind === 'ok' ? 'status-ok' : kind === 'warn' ? 'status-warn' : '';
+    }
+
+    function renderLogin(status) {
+      state.loggedIn = status.loggedIn === true;
+      const badge = $('loginBadge');
+      if (state.loggedIn) {
+        badge.className = 'badge';
+        badge.textContent = `已登录${status.uname ? ' · ' + status.uname : ''}`;
+        $('loginBtn').classList.add('hidden');
+        $('logoutBtn').classList.remove('hidden');
+      } else {
+        badge.className = 'badge muted';
+        badge.textContent = status.stale ? '登录态已失效，请重新扫码' : status.error ? '登录态检查失败' : '未登录（字幕接口需要它）';
+        $('loginBtn').classList.remove('hidden');
+        $('logoutBtn').classList.add('hidden');
+      }
+      if (status.error) setMsg(status.error, 'warn');
+    }
+
+    async function refreshStatus() {
+      try {
+        const response = await fetch(api('status'));
+        renderLogin(await response.json());
+      } catch (error) {
+        $('loginBadge').textContent = '无法连接插件';
+        setMsg(String(error), 'err');
+      }
+    }
+
+    function stopPolling() {
+      if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+      state.qrKey = null;
+      $('qrBox').classList.remove('show');
+    }
+
+    function drawQr(text) {
+      const qr = qrcode(0, 'M');
+      qr.addData(text);
+      qr.make();
+      $('qrImg').src = qr.createDataURL(8, 2);
+    }
+
+    async function startLogin() {
+      setMsg('');
+      $('loginBtn').disabled = true;
+      try {
+        const response = await fetch(api('login/generate'), { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok || !data.qrcode_key) throw new Error(data.error || '二维码生成失败');
+        state.qrKey = data.qrcode_key;
+        drawQr(data.url);
+        $('qrBox').classList.add('show');
+        $('qrState').textContent = '用手机 B 站 App 扫码并在手机上确认';
+        state.pollTimer = setInterval(pollLogin, 2000);
+      } catch (error) {
+        setMsg(String(error.message || error), 'err');
+      } finally {
+        $('loginBtn').disabled = false;
+      }
+    }
+
+    async function pollLogin() {
+      if (!state.qrKey) return;
+      try {
+        const response = await fetch(api('login/poll?qrcode_key=' + encodeURIComponent(state.qrKey)));
+        const data = await response.json();
+        if (!response.ok) {
+          stopPolling();
+          if (data.needManual) $('manualBox').open = true;
+          setMsg(data.error || '登录失败', 'err');
+          return;
+        }
+        if (data.state === 'waiting') $('qrState').textContent = '等待扫码…';
+        else if (data.state === 'scanned') $('qrState').textContent = '已扫码，请在手机上点确认';
+        else if (data.state === 'expired') { stopPolling(); setMsg('二维码已过期，请重新点「扫码登录」', 'warn'); }
+        else if (data.state === 'success') {
+          stopPolling();
+          renderLogin(data);
+          setMsg('登录成功，SESSDATA 已保存到本机', 'ok');
+        }
+      } catch (error) {
+        stopPolling();
+        setMsg(String(error.message || error), 'err');
+      }
+    }
+
+    async function saveManual() {
+      const value = $('manualInput').value.trim();
+      if (!value) { setMsg('先粘贴 SESSDATA', 'warn'); return; }
+      $('manualBtn').disabled = true;
+      setMsg('校验登录态…');
+      try {
+        const response = await fetch(api('login/manual'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessdata: value }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '保存失败');
+        $('manualInput').value = '';
+        $('manualBox').open = false;
+        renderLogin(data);
+        setMsg('登录态已校验并保存', 'ok');
+      } catch (error) {
+        setMsg(String(error.message || error), 'err');
+      } finally {
+        $('manualBtn').disabled = false;
+      }
+    }
+
+    async function logout() {
+      await fetch(api('logout'), { method: 'POST' });
+      setMsg('已清除本机登录态', 'ok');
+      await refreshStatus();
+    }
+
+    function fmtDuration(total) {
+      total = Math.max(0, Math.floor(total || 0));
+      const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+      return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
+    }
+
+    function renderVideo(data) {
+      state.video = data;
+      $('result').classList.add('show');
+      $('videoTitle').textContent = data.title || '(无标题)';
+      $('videoMeta').textContent = [
+        data.bvid ? 'BV ' + data.bvid : null,
+        data.owner ? 'UP ' + data.owner : null,
+        '时长 ' + fmtDuration(data.duration),
+        data.pageCount > 1 ? `P${data.pageNumber}/${data.pageCount}` : null,
+        `播放 ${data.stat.view ?? 0}`,
+      ].filter(Boolean).join(' · ');
+      $('videoDesc').textContent = data.desc || '（简介为空）';
+
+      const chips = $('langChips');
+      chips.innerHTML = '';
+      const showSub = $('showSubBtn'), copySub = $('copySubBtn');
+      if (!data.subtitles || data.subtitles.length === 0) {
+        const reason = data.subtitleError
+          ? `<span class="status-warn">字幕读取失败：${data.subtitleError}</span>`
+          : '<span class="status-warn">这个视频没有可用字幕</span>（未登录 / 未上传字幕 / 字幕被锁定）。可改用抽帧截图理解画面。'
+        $('subsLabel').innerHTML = reason;
+        showSub.classList.add('hidden');
+        copySub.classList.add('hidden');
+        $('transcript').classList.add('hidden');
+        $('transcript').textContent = '';
+        return;
+      }
+      $('subsLabel').textContent = `字幕（${data.subtitles.length} 条）`;
+      data.subtitles.forEach((item, index) => {
+        const chip = document.createElement('button');
+        chip.className = 'chip' + (index === 0 ? ' active' : '');
+        chip.textContent = `${item.lanDoc || item.lan}${item.isAi ? ' · AI' : ''}`;
+        chip.onclick = () => loadSubtitle(item.lan, chip);
+        chips.appendChild(chip);
+      });
+      showSub.classList.remove('hidden');
+      copySub.classList.remove('hidden');
+      loadSubtitle(data.subtitles[0].lan, chips.firstChild);
+    }
+
+    async function loadSubtitle(lan, chip) {
+      if (!state.video) return;
+      state.currentLang = lan;
+      document.querySelectorAll('#langChips .chip').forEach((el) => el.classList.remove('active'));
+      if (chip) chip.classList.add('active');
+      const el = $('transcript');
+      el.classList.add('hidden');
+      el.textContent = '加载字幕…';
+      try {
+        const params = new URLSearchParams({ video: state.video.bvid || String(state.video.aid), page: String(state.video.pageNumber || 1), language: lan });
+        const response = await fetch(api('subtitle?' + params.toString()));
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '字幕读取失败');
+        el.textContent = data.lines.map((l) => `[${fmtDuration(l.from)}] ${l.text}`).join('\n');
+        el.dataset.plain = data.text || '';
+        el.classList.remove('hidden');
+        setMsg(`字幕 ${data.lanDoc || data.lan} 共 ${data.lines.length} 行`, 'ok');
+      } catch (error) {
+        el.textContent = '读取失败：' + (error.message || error);
+        el.classList.remove('hidden');
+        setMsg(String(error.message || error), 'err');
+      }
+    }
+
+    async function query() {
+      const raw = $('videoInput').value.trim();
+      if (!raw) { setMsg('先粘贴一个视频链接或 BV 号', 'warn'); return; }
+      $('queryBtn').disabled = true;
+      setMsg('读取视频信息…');
+      try {
+        const response = await fetch(api('video?video=' + encodeURIComponent(raw)));
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '读取失败');
+        if (!state.loggedIn && (!data.subtitles || data.subtitles.length === 0)) {
+          setMsg('信息读到了，但没有字幕：先扫码登录再读一次。', 'warn');
+        }
+        renderVideo(data);
+      } catch (error) {
+        setMsg(String(error.message || error), 'err');
+      } finally {
+        $('queryBtn').disabled = false;
+      }
+    }
+
+    async function copyText(text, label) {
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        setMsg(`已复制${label}`, 'ok');
+      } catch {
+        setMsg('复制失败：浏览器拒绝写入剪贴板', 'err');
+      }
+    }
+
+    $('loginBtn').onclick = startLogin;
+    $('logoutBtn').onclick = logout;
+    $('manualBtn').onclick = saveManual;
+    $('manualInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') saveManual(); });
+    $('queryBtn').onclick = query;
+    $('videoInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') query(); });
+    $('copyDescBtn').onclick = () => copyText(state.video ? state.video.desc : '', '简介');
+    $('showSubBtn').onclick = () => {
+      const el = $('transcript');
+      el.classList.toggle('hidden');
+      $('showSubBtn').textContent = el.classList.contains('hidden') ? '查看字幕' : '收起字幕';
+    };
+    $('copySubBtn').onclick = () => copyText($('transcript').dataset.plain || '', '字幕纯文本');
+
+    refreshStatus();
+  })();
+  </script>
+</body>
+</html>

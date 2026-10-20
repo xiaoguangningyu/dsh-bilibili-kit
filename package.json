@@ -1,0 +1,42 @@
+{
+  "name": "dsh-bilibili-kit",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Bilibili 字幕/简介读取工具（DSH 插件）：扫码登录保存登录态，视频标题、简介、分P、字幕一次性取回；设置页内置面板。",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "panel.html",
+    "vendor",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "bilibili",
+    "subtitle"
+  ],
+  "license": "MIT"
+}

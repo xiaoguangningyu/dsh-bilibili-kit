@@ -1,0 +1,9 @@
+# dsh-bilibili-kit bundle patch.
+#
+# 一行 insert 即挂载 Host 半身（工具 + 本地路由）。
+# 浏览器半身：不需要 —— 面板由 Host 直接从路由吐出 HTML，
+# 用 sidebar_open 打开 http://127.0.0.1:<port>/bilibili-kit 即可。
+- insert:
+    - id: bilibili-kit
+      name: 'dsh-bilibili-kit'
+      config: {}
