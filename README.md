@@ -14,20 +14,66 @@
 
 它**不做**：下载视频、绕过付费/会员/充电专属内容、点赞评论转发。字幕只用来给你自己看和总结。
 
-## 安装（桌面端 desktop profile）
+## 安装
 
-桌面应用的 CLI 不管理 `desktop` profile（内核写死），所以走界面：
+### 方式一：命令行（官方 0.2.1+ 推荐）
+
+```powershell
+# 内置 CLI 能管理 desktop profile
+& "$env:LOCALAPPDATA\Programs\DeepSeekHarness\resources\runtime\cli\bin\dsh.cmd" `
+    plugin --profile desktop add <包名或路径>
+```
+
+> **注意**：CLI 会写 `~/.dsh`，在受限沙箱下可能被拒（`EPERM ... package.json.lock`），需要足够权限。
+> 装完重启 DSH 生效。
+
+### 方式二：界面
 
 1. 侧栏打开「插件」页（副标题「安装、启用和配置插件」），点「添加插件」；
-2. 填**本地绝对路径**：
-
-   ```
-   D:\Asus\Documents\ds-harness-test1\dsh-bilibili-kit
-   ```
-
-3. 安装完成后它会被自动加进 profile 的 `dsh.profile.bundles`；
+2. 填包名或本地路径（**填目录会装成 Junction，先看下一节**）；
+3. 安装完成后自动加进 profile 的 `dsh.profile.bundles`；
 4. 重启 DSH（或按插件页提示重载）。
 
+### ⚠️ 装成 Junction 还是真实目录：选错会踩坑
+
+同一个插件名，**两种填法装出来的东西完全不同**：
+
+| 你怎么填 | 实际落成 | 适用场景 |
+|---|---|---|
+| 界面「添加插件」填**目录绝对路径**<br>（如 `D:\path\to\dsh-bilibili-kit`） | `link:` → **Junction**，指向源目录 | 改代码要立即生效 |
+| CLI `add file:<某个 .tgz>` | `file:` → **真实目录**，脱离源目录 | 日常使用（**推荐**） |
+| 填**包名**（已发布到 npm 时） | npm 解包目录 | 发布后 |
+
+**为什么推荐 tarball**：源目录一旦被移动、重命名或清理，`link:` 装的插件立刻失效。
+
+**必须先 remove 再 add**。如果当前是 Junction，直接 `add file:xxx.tgz` 不会替换它 ——
+pnpm 会判 `Already up to date`，**package.json 里的 specifier 变了，`node_modules` 里还是旧 Junction**：
+
+```powershell
+dsh plugin --profile desktop remove dsh-bilibili-kit
+dsh plugin --profile desktop add "file:D:\path\dsh-bilibili-kit-0.2.0.tgz"
+```
+
+装完自己验一下（`LinkType` 为空才是真实目录）：
+
+```powershell
+(Get-Item "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-bilibili-kit").LinkType
+```
+
+自己打 tarball：
+
+```powershell
+$src = 'D:\path\to\dsh-bilibili-kit'
+$stage = Join-Path $env:TEMP 'bili-pack'
+New-Item -ItemType Directory -Force -Path "$stage\package" | Out-Null
+robocopy $src "$stage\package" /E /XF '*.tgz' | Out-Null
+Push-Location $stage
+tar.exe -czf "$src\dsh-bilibili-kit-0.2.0.tgz" package
+Pop-Location
+```
+
+> **别用 `npm pack`** —— 见下方「开发约束」第 5 条。
+>
 > 卸载：插件页移除即可。登录态若想同步清除，删掉 `~/.dsh/bilibili-kit/` 整个目录。
 
 ## 使用
@@ -35,8 +81,11 @@
 **设置页（推荐）**：重启后打开「设置」，左侧导航会多一个 **「B 站字幕工具」** 分区，
 里面就是完整面板（扫码登录 / 查询 / 复制字幕），不用再开浏览器标签。
 
-**面板**：也可以用 `sidebar_open` 或浏览器访问 `http://127.0.0.1:<端口>/bilibili-kit`
-（端口以本机 DSH 为准，通常是 43120）。
+**面板**：也可以用 `sidebar_open` 或浏览器访问 `http://127.0.0.1:<端口>/bilibili-kit`。
+
+> **端口每次都可能变。** 桌面端由**系统分配端口**（0.2.1 起为了避免撞上 Windows 保留端口段），
+> 不是固定的 43120。以当前会话的 `$DSH_WEB_URL` 为准 —— 本机实测见过
+> `52215` / `53431` / `56604` / `56732` 等多个值。别硬编码旧端口。
 
 1. 点「扫码登录」，用手机 B 站 App 扫码并确认；
 2. 粘贴视频链接 / BV 号，点「读取」；
@@ -80,6 +129,18 @@
 4. **登录态在 `Set-Cookie` 响应头，不在 JSON 里**：扫码 poll 成功时，cookie 由响应头下发；
    `data.url` 只是游戏分站的跨域跳转链接，可能为空。要用 `headers.getSetCookie()`；
    老运行时退回组合头时，**只能在 `, name=` 处切**（`Expires` 和 SESSDATA 值本身都含逗号）。
+5. **`package.json` 的 `files` 白名单必须包含 `cordis.patch.yml`**：
+   `npm pack` 只按 `files` 打包，漏了这个文件，打出的包里就没有挂载声明，
+   安装时报：
+
+   ```
+   dsh: installation rejected: Cannot validate installed package dsh-bilibili-kit:
+   failed to read overlay ...\node_modules\dsh-bilibili-kit\cordis.patch.yml: ENOENT
+   dsh: restored package.json, pnpm-lock.yaml, and node_modules.
+   ```
+
+   DSH 会自动回滚，不会留下半装状态，但这个包**发到 npm 就是坏的**。
+   当前 `files` 已包含它；改打包配置时记得别删。
 
 
 ## 安全边界（实现事实）
